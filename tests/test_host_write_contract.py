@@ -168,6 +168,11 @@ class RealSqliteHost:
         )
         self.conn.commit()
 
+    topic_bindings: dict = {}
+
+    def get_telegram_topic_binding_by_session(self, *, session_id):
+        return self.topic_bindings.get(session_id)
+
     def list_sessions_rich(self, limit=20, min_message_count=0, include_children=False):
         cur = self.conn.execute(
             "SELECT id, title, title_source FROM sessions ORDER BY id LIMIT ?",
@@ -396,6 +401,7 @@ def test_host_stub_covers_every_host_api_the_plugin_calls():
         "_execute_write",
         "list_sessions_rich",
         "record_auxiliary_usage",
+        "get_telegram_topic_binding_by_session",
     }
 
     accessed = set()
@@ -429,3 +435,35 @@ def test_host_stub_covers_every_host_api_the_plugin_calls():
     host = RealSqliteHost(modern=True)
     for name in expected_host_api:
         assert hasattr(host, name), f"host stub missing {name}"
+
+
+def test_llm_rename_of_bound_session_renames_the_telegram_topic(monkeypatch):
+    import asyncio
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "hermes_cli", types.ModuleType("hermes_cli"))
+    host_mod = types.ModuleType("hermes_cli.plugin_host")
+    host_mod._run_on_gateway_loop = asyncio.run
+    monkeypatch.setitem(sys.modules, "hermes_cli.plugin_host", host_mod)
+    calls = []
+
+    class PlatformActions:
+        async def set_thread_title(self, platform, chat_id, thread_id, title):
+            calls.append((platform, chat_id, thread_id, title))
+            return {"ok": True}
+
+    host = RealSqliteHost(modern=True)
+    host.topic_bindings = {"s1": {"chat_id": "407", "thread_id": 99}}
+    host.add_session("s1", "old one", "llm")
+    host.add_session("s2", "old two", "llm")
+    ctx = SimpleNamespace(
+        llm=FakeLlm(_dec("rename", "new title")), platform_actions=PlatformActions()
+    )
+    t = AutoTitler(ctx, {**DEFAULTS, "rename_confirmations": 0}, db=host)
+
+    assert t.evaluate("s1", force=True)["action"] == "renamed"
+    assert calls == [("telegram", "407", "99", "new title")]
+
+    t.evaluate("s2", force=True)
+    assert len(calls) == 1

@@ -1674,6 +1674,7 @@ class AutoTitler:
         if written:
             self._pending.pop(session_id, None)
             log.info("auto-titler %s: renamed -> %r", session_id[:12], written)
+            self._rename_telegram_topic(db, session_id, written)
             return {"action": "renamed", "title": written}
         self._pending.pop(session_id, None)
         reason = self._protected_reason(db, session_id)
@@ -1683,6 +1684,23 @@ class AutoTitler:
             return {"action": "skipped", "reason": reason}
         log.warning("auto-titler %s: rename failed to write title %r", session_id[:12], title)
         return {"action": "failed"}
+
+    def _rename_telegram_topic(self, db: SessionDB, session_id: str, title: str) -> None:
+        try:
+            binding = db.get_telegram_topic_binding_by_session(session_id=session_id)
+            if not binding:
+                return
+            from hermes_cli.plugin_host import _run_on_gateway_loop
+
+            result = _run_on_gateway_loop(
+                self.ctx.platform_actions.set_thread_title(
+                    "telegram", str(binding["chat_id"]), str(binding["thread_id"]), title
+                )
+            )
+            if not result.get("ok"):
+                log.warning("auto-titler %s: topic rename failed: %s", session_id[:12], result)
+        except Exception:
+            log.warning("auto-titler %s: topic rename raised", session_id[:12], exc_info=True)
 
     def _rename_limit_result(
         self,

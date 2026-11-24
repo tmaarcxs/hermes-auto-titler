@@ -249,6 +249,12 @@ def load_config(path: Path | None = None, *, ctx: Any = None) -> dict[str, Any]:
 
     if ctx is not None:
         for key in DEFAULTS:
+            # The host reserves the 'model' settings root, so ctx.get_config('model')
+            # always warns 'Rejected config path' and raises — 37 warnings/week on
+            # every plugin load cycle. Read the host channel only for keys the host
+            # can actually accept, and take 'model' from title_model instead.
+            if key in ("model", "model_source"):
+                continue
             try:
                 value = ctx.get_config(key, None)
             except Exception:

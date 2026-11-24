@@ -1820,7 +1820,13 @@ class AutoTitler:
 
     def _bounds(self) -> Tuple[int, int]:
         cfg_len = self.cfg.get("max_title_length")
-        max_len = min(int(cfg_len), SessionDB.MAX_TITLE_LENGTH) if cfg_len is not None else SessionDB.MAX_TITLE_LENGTH
+        host_max = getattr(SessionDB, 'MAX_TITLE_LENGTH', None)
+        if host_max is None:
+            try:
+                from persistence.conversation.sessions import MAX_TITLE_LENGTH as host_max
+            except ImportError:  # pragma: no cover - unknown host core
+                host_max = 80
+        max_len = min(int(cfg_len), host_max) if cfg_len is not None else host_max
         # 显示列宽硬限（中文=2 列）：complete 风格放宽 12 列
         max_cols = int(self.cfg.get("max_display_width", 40))
         if self.cfg.get("title_style", "concise") == "complete":

@@ -307,7 +307,7 @@ def _is_capacity_error(text: str) -> bool:
 def _retry_class(text: str) -> str:
     """Classify scheduler behavior without rewriting the provider's diagnosis."""
     lowered = str(text or "").lower()
-    if "unscopedsecreterror" in lowered:
+    if "unscopedsecreterror" in lowered or "auxiliaryclientunavailable" in lowered:
         return "blocked"
     if _is_capacity_error(lowered):
         return "capacity"
@@ -665,6 +665,16 @@ class AutoTitler:
             daemon=True,
         )
         self._retry_thread.start()
+
+    def stop_retry_loop(self) -> None:
+        """Stop the background retry sweep thread on plugin unload/reload."""
+        stop_ev = getattr(self, "_retry_stop", None)
+        if stop_ev is not None:
+            stop_ev.set()
+        thread = getattr(self, "_retry_thread", None)
+        self._retry_thread = None
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
 
     def _early_enabled(self) -> bool:
         """首轮命名开关：plugin=插件第 1 轮即评估；builtin（默认）=首轮让给内建。"""

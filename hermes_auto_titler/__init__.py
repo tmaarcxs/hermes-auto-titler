@@ -65,6 +65,8 @@ def register(ctx) -> None:
         ctx.register_hook("on_session_finalize", titler.on_session_finalize)
         titler.restore_state()
         titler.start_retry_loop()
+        if hasattr(ctx, "on_unload"):
+            ctx.on_unload(titler.stop_retry_loop)
     ctx.register_command(
         "autotitler",
         make_handler(titler),
